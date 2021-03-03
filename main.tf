@@ -277,7 +277,7 @@ resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
 }
 
 #
-# ECS
+# ECS task details
 #
 
 resource "aws_ecs_task_definition" "scheduled_task_def" {
@@ -304,9 +304,9 @@ resource "aws_ecs_task_definition" "scheduled_task_def" {
         "logDriver": "awslogs",
         "secretOptions": null,
         "options": {
-          "awslogs-group": "/ecs/test/cis-aws",
+          "awslogs-group": "${module.cms_ecs_service.awslogs_group}",
           "awslogs-region": "${data.aws_region.current.name}",
-          "awslogs-stream-prefix": "cis-task"
+          "awslogs-stream-prefix": "${var.app_name}"
         }
       },
     "mountPoints": [],
