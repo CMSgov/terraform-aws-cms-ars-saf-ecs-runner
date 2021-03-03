@@ -1,13 +1,3 @@
-data "aws_ami" "ecs_ami" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn-ami-*-amazon-ecs-optimized"]
-  }
-}
-
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "cloudwatch_logs_allow_kms" {
@@ -48,23 +38,10 @@ data "aws_iam_policy_document" "cloudwatch_logs_allow_kms" {
   }
 }
 
-module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
-
-  name = "my-vpc"
-  cidr = "10.0.0.0/16"
-
-  azs             = ["us-west-2a"]
-  public_subnets  = ["10.0.101.0/24"] // not using but needed for nat, can we use internet gateway?
-  private_subnets = ["10.0.1.0/24"]
-
-  enable_nat_gateway = true
-  single_nat_gateway = true
-
-  tags = {
-    Automation  = "Terraform"
-    Environment = "Test"
-  }
+# Create a data source to pull the latest active revision from
+data "aws_ecs_task_definition" "scheduled_task_def" {
+  task_definition = aws_ecs_task_definition.scheduled_task_def.family
+  depends_on      = [aws_ecs_task_definition.scheduled_task_def] # ensures at least one task def exists
 }
 
 resource "aws_kms_key" "log_enc_key" {
@@ -102,8 +79,8 @@ module "cms_ecs_service" {
   }
 
   logs_cloudwatch_retention = 731
-  ecs_vpc_id                = module.vpc.vpc_id
-  ecs_subnet_ids            = module.vpc.private_subnets
+  ecs_vpc_id                = var.ecs_vpc_id
+  ecs_subnet_ids            = var.ecs_subnet_ids
   kms_key_id                = aws_kms_key.log_enc_key.arn
   ecs_use_fargate           = true
 }
@@ -111,19 +88,6 @@ module "cms_ecs_service" {
 ### ECS schedule task ##
 
 ### Set up Assume Role policies
-
-locals {
-  name                = "inspec"
-  environment         = "test"
-  task_name           = "aws-moderate-scan"
-  schedule_expression = "cron(30 9 * * ? *)" // run 9:30 everyday
-  // minute, hour, day of month, month, day of week, year
-  //https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html
-
-  repo_url = "004351505091.dkr.ecr.us-west-2.amazonaws.com/cms-aws-inspec-profile"
-  repo_tag = "1613146248"
-
-}
 
 data "aws_partition" "current" {}
 
@@ -171,7 +135,7 @@ data "aws_iam_policy_document" "cloudwatch_target_role_policy_doc" {
 }
 
 resource "aws_iam_role" "cloudwatch_target_role" {
-  name               = "cw-target-role-${local.name}-${var.environment}-${var.task_name}"
+  name               = "cw-target-role-${var.app_name}-${var.environment}-${var.task_name}"
   description        = "Role allowing CloudWatch Events to run the task"
   assume_role_policy = data.aws_iam_policy_document.events_assume_role_policy.json
 }
@@ -192,7 +156,7 @@ data "aws_iam_policy_document" "task_role_policy_doc" {
       "ssm:GetParametersByPath",
     ]
 
-    resources = ["arn:${data.aws_partition.current.partition}:ssm:*:*:parameter/${local.name}-${var.environment}/*"]
+    resources = ["arn:${data.aws_partition.current.partition}:ssm:*:*:parameter/${var.app_name}-${var.environment}/*"]
   }
 }
 
@@ -202,7 +166,7 @@ resource "aws_iam_role_policy_attachment" "read_only_everything" {
 }
 
 resource "aws_iam_role" "task_role" {
-  name               = "ecs-task-role-${local.name}-${var.environment}-${local.task_name}"
+  name               = "ecs-task-role-${var.app_name}-${var.environment}-${var.task_name}"
   description        = "Role allowing container definition to execute"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role_policy.json
 }
@@ -249,7 +213,7 @@ data "aws_iam_policy_document" "task_execution_role_policy_doc" {
       "secretsmanager:GetSecretValue",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:/${local.name}-${local.environment}*",
+      "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:/${var.app_name}-${var.environment}*",
     ]
   }
 
@@ -259,13 +223,13 @@ data "aws_iam_policy_document" "task_execution_role_policy_doc" {
     ]
 
     resources = [
-      "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${local.name}-${local.environment}*",
+      "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.app_name}-${var.environment}*",
     ]
   }
 }
 
 resource "aws_iam_role" "task_execution_role" {
-  name               = "ecs-task-exec-role-${local.name}-${local.environment}-${local.task_name}"
+  name               = "ecs-task-exec-role-${var.app_name}-${var.environment}-${var.task_name}"
   description        = "Role allowing ECS tasks to execute"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role_policy.json
 }
@@ -281,13 +245,13 @@ resource "aws_iam_role_policy" "task_execution_role_policy" {
 #
 
 resource "aws_cloudwatch_event_rule" "run_command" {
-  name                = "${local.task_name}-${local.environment}"
-  description         = "Scheduled task for ${local.task_name} in ${local.environment}"
-  schedule_expression = local.schedule_expression
+  name                = "${var.task_name}-${var.environment}"
+  description         = "Scheduled task for ${var.task_name} in ${var.environment}"
+  schedule_expression = var.schedule_task_expression
 }
 
 resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
-  target_id = "run-scheduled-task-${local.task_name}-${local.environment}"
+  target_id = "run-scheduled-task-${var.task_name}-${var.environment}"
   arn       = aws_ecs_cluster.inspec_cluster.arn
   rule      = aws_cloudwatch_event_rule.run_command.name
   role_arn  = aws_iam_role.cloudwatch_target_role.arn
@@ -300,7 +264,7 @@ resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
     task_definition_arn = aws_ecs_task_definition.scheduled_task_def.arn
 
     network_configuration {
-      subnets          = module.vpc.private_subnets
+      subnets          = var.ecs_subnet_ids
       security_groups  = [module.cms_ecs_service.ecs_security_group_id]
       assign_public_ip = false
     }
@@ -316,7 +280,7 @@ resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
 #
 
 resource "aws_ecs_task_definition" "scheduled_task_def" {
-  family        = "${local.name}-${local.environment}-${local.task_name}"
+  family        = "${var.app_name}-${var.environment}-${var.task_name}"
   network_mode  = "awsvpc"
   task_role_arn = aws_iam_role.task_role.arn
 
@@ -328,8 +292,8 @@ resource "aws_ecs_task_definition" "scheduled_task_def" {
   container_definitions = <<DEFINITION
 [
   {
-    "name": "${local.name}-${local.environment}-${local.task_name}",
-    "image": "${local.repo_url}:${local.repo_tag}",
+    "name": "${var.app_name}-${var.environment}-${var.task_name}",
+    "image": "${var.repo_url}:${var.repo_tag}",
     "cpu": 128,
     "memory": 1024,
     "essential": true,
@@ -360,11 +324,4 @@ resource "aws_ecs_task_definition" "scheduled_task_def" {
 ]
 DEFINITION
 }
-
-# Create a data source to pull the latest active revision from
-data "aws_ecs_task_definition" "scheduled_task_def" {
-  task_definition = aws_ecs_task_definition.scheduled_task_def.family
-  depends_on      = [aws_ecs_task_definition.scheduled_task_def] # ensures at least one task def exists
-}
-
 
