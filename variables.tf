@@ -18,6 +18,18 @@ variable "ecs_subnet_ids" {
   type        = list(string)
 }
 
+variable "logs_cloudwatch_retention" {
+  description = "Number of days you want to retain log events in the log group"
+  default = 732 //  two years
+  type = number
+}
+
+variable "logs_cloudwatch_group" {
+  description = "CloudWatch log group to create and use. Default: /ecs/{app_name}-{environment}"
+  default     = ""
+  type        = string
+}
+
 variable "repo_url" {
   type = string
   description = "The url of the ECR repo to pull images and run in ecs"

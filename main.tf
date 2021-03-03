@@ -1,3 +1,7 @@
+locals {
+  awslogs_group = var.logs_cloudwatch_group == "" ? "/ecs/${var.environment}/${var.app_name}" : var.logs_cloudwatch_group
+}
+
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "cloudwatch_logs_allow_kms" {
@@ -98,27 +102,47 @@ resource "aws_ecs_cluster" "inspec_cluster" {
   }
 }
 
-# ECS service for running inspec profile container
-module "cms_ecs_service" {
-  source = "trussworks/ecs-service/aws"
+#  ecs service components
 
-  name          = var.app_name
-  environment   = var.environment
-  ecr_repo_arns = [var.cms_ars_repo_arn]
+resource "aws_cloudwatch_log_group" "main" {
+  name              = local.awslogs_group
+  retention_in_days = var.logs_cloudwatch_retention
 
-  ecs_cluster = {
-    name = aws_ecs_cluster.inspec_cluster.name,
-    arn  = aws_ecs_cluster.inspec_cluster.arn
+  kms_key_id = aws_kms_key.log_enc_key.arn
+
+  tags = {
+    Name        = "${var.app_name}-${var.environment}"
+    Environment = var.environment
+    Automation  = "Terraform"
   }
-
-  logs_cloudwatch_retention = 731
-  ecs_vpc_id                = var.ecs_vpc_id
-  ecs_subnet_ids            = var.ecs_subnet_ids
-  kms_key_id                = aws_kms_key.log_enc_key.arn
-  ecs_use_fargate           = true
 }
 
-### ECS schedule task ##
+# SG - ECS
+
+resource "aws_security_group" "ecs_sg" {
+  name        = "ecs-${var.app_name}-${var.environment}"
+  description = "${var.app_name}-${var.environment} container security group"
+  vpc_id      = var.ecs_vpc_id
+
+  tags = {
+    Name        = "ecs-${var.app_name}-${var.environment}"
+    Environment = var.environment
+    Automation  = "Terraform"
+  }
+}
+
+resource "aws_security_group_rule" "app_ecs_allow_outbound" {
+  description       = "Allow all outbound"
+  security_group_id = aws_security_group.ecs_sg.id
+
+  type        = "egress"
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+  cidr_blocks = ["0.0.0.0/0"]
+}
+
+## ECS schedule task
 
 # Allows CloudWatch Rule to run ECS Task
 
@@ -146,7 +170,7 @@ resource "aws_iam_role_policy" "cloudwatch_target_role_policy" {
   policy = data.aws_iam_policy_document.cloudwatch_target_role_policy_doc.json
 }
 
-### ECS Task Role
+# ECS Task Role
 # Allows ECS to start the task by decrypting secrets for Chamber
 
 data "aws_iam_policy_document" "task_role_policy_doc" {
@@ -187,7 +211,7 @@ data "aws_iam_policy_document" "task_execution_role_policy_doc" {
       "logs:PutLogEvents",
     ]
 
-    resources = ["${module.cms_ecs_service.awslogs_group_arn}:*"]
+    resources = ["${aws_cloudwatch_log_group.main.arn}:*"]
   }
 
   statement {
@@ -265,7 +289,7 @@ resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
 
     network_configuration {
       subnets          = var.ecs_subnet_ids
-      security_groups  = [module.cms_ecs_service.ecs_security_group_id]
+      security_groups  = [aws_security_group.ecs_sg.id]
       assign_public_ip = false
     }
   }
@@ -303,7 +327,7 @@ resource "aws_ecs_task_definition" "scheduled_task_def" {
         "logDriver": "awslogs",
         "secretOptions": null,
         "options": {
-          "awslogs-group": "${module.cms_ecs_service.awslogs_group}",
+          "awslogs-group": "${local.awslogs_group}",
           "awslogs-region": "${data.aws_region.current.name}",
           "awslogs-stream-prefix": "${var.app_name}"
         }
