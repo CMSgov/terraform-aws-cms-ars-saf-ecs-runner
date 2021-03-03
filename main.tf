@@ -229,7 +229,7 @@ data "aws_iam_policy_document" "task_execution_role_policy_doc" {
       "ecr:BatchGetImage",
     ]
 
-    resources = [module.cms_ars_repo.arn]
+    resources = [var.cms_ars_repo_arn]
   }
 
   statement {
