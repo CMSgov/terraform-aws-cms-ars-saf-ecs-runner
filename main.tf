@@ -44,51 +44,7 @@ data "aws_ecs_task_definition" "scheduled_task_def" {
   depends_on      = [aws_ecs_task_definition.scheduled_task_def] # ensures at least one task def exists
 }
 
-resource "aws_kms_key" "log_enc_key" {
-  description         = "KMS key for encrypting logs"
-  enable_key_rotation = true
-  policy              = data.aws_iam_policy_document.cloudwatch_logs_allow_kms.json
-
-  tags = {
-    Automation = "Terraform"
-  }
-}
-
-resource "aws_ecs_cluster" "inspec_cluster" {
-  name = "${var.app_name}-inspec"
-
-  tags = {
-    Environment = var.environment
-    Automation  = "Terraform"
-  }
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# ECS service for running inspec profile container
-module "cms_ecs_service" {
-  source = "trussworks/ecs-service/aws"
-
-  name          = "cis-aws"
-  environment   = "test"
-  ecr_repo_arns = [var.cms_ars_repo_arn]
-
-  ecs_cluster = {
-    name = aws_ecs_cluster.inspec_cluster.name,
-    arn  = aws_ecs_cluster.inspec_cluster.arn
-  }
-
-  logs_cloudwatch_retention = 731
-  ecs_vpc_id                = var.ecs_vpc_id
-  ecs_subnet_ids            = var.ecs_subnet_ids
-  kms_key_id                = aws_kms_key.log_enc_key.arn
-  ecs_use_fargate           = true
-}
-
-### ECS schedule task ##
-
-### Set up Assume Role policies
+# Assume Role policies
 
 data "aws_partition" "current" {}
 
@@ -120,7 +76,50 @@ data "aws_iam_policy_document" "events_assume_role_policy" {
   }
 }
 
-### CloudWatch Target IAM
+resource "aws_kms_key" "log_enc_key" {
+  description         = "KMS key for encrypting logs"
+  enable_key_rotation = true
+  policy              = data.aws_iam_policy_document.cloudwatch_logs_allow_kms.json
+
+  tags = {
+    Automation = "Terraform"
+  }
+}
+
+resource "aws_ecs_cluster" "inspec_cluster" {
+  name = "${var.app_name}-inspec"
+
+  tags = {
+    Environment = var.environment
+    Automation  = "Terraform"
+  }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# ECS service for running inspec profile container
+module "cms_ecs_service" {
+  source = "trussworks/ecs-service/aws"
+
+  name          = var.app_name
+  environment   = var.environment
+  ecr_repo_arns = [var.cms_ars_repo_arn]
+
+  ecs_cluster = {
+    name = aws_ecs_cluster.inspec_cluster.name,
+    arn  = aws_ecs_cluster.inspec_cluster.arn
+  }
+
+  logs_cloudwatch_retention = 731
+  ecs_vpc_id                = var.ecs_vpc_id
+  ecs_subnet_ids            = var.ecs_subnet_ids
+  kms_key_id                = aws_kms_key.log_enc_key.arn
+  ecs_use_fargate           = true
+}
+
+### ECS schedule task ##
+
 # Allows CloudWatch Rule to run ECS Task
 
 data "aws_iam_policy_document" "cloudwatch_target_role_policy_doc" {
