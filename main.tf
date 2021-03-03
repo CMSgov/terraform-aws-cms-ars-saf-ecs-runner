@@ -55,7 +55,8 @@ resource "aws_kms_key" "log_enc_key" {
 }
 
 resource "aws_ecs_cluster" "inspec_cluster" {
-  name = "inspec"
+  name = "${var.app_name}-inspec"
+
   tags = {
     Environment = var.environment
     Automation  = "Terraform"
