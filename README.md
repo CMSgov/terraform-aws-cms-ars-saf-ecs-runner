@@ -5,17 +5,17 @@ task which can run a periodic Inspec scan against an AWS account. The module sup
 
 * Run an ECS task and stream output to Cloudwatch
 * Cloudwatch rule to run tasks on a cron based cadence
-* Use a user defined ECR repo to run ECs tasks 
+* Use a user defined ECR repo to run ECs tasks
 
 ## Usage
 
 ```hcl
 module "ecs_saf_runner" {
   source = "github.com/CMSgov/terraform-aws-cms-ars-saf-ecs-runner"
-  
+
   app_name    = "aws-scanner"
   environment = "prod"
-  
+
   task_name                = "CIS-Moderate"
   ecs_vpc_id               = module.vpc.vpc_id
   ecs_subnet_ids           = module.vpc.private_subnets
