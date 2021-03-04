@@ -171,8 +171,6 @@ resource "aws_iam_role_policy" "cloudwatch_target_role_policy" {
 }
 
 # ECS Task Role
-# Allows ECS to start the task by decrypting secrets for Chamber
-
 data "aws_iam_policy_document" "task_role_policy_doc" {
   # Allow access to the environment specific app secrets
   statement {
@@ -229,7 +227,7 @@ data "aws_iam_policy_document" "task_execution_role_policy_doc" {
       "ecr:BatchGetImage",
     ]
 
-    resources = [var.cms_ars_repo_arn]
+    resources = [var.repo_arn]
   }
 
   statement {
@@ -299,9 +297,7 @@ resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
   }
 }
 
-#
 # ECS task details
-#
 
 resource "aws_ecs_task_definition" "scheduled_task_def" {
   family        = "${var.app_name}-${var.environment}-${var.task_name}"

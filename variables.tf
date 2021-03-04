@@ -47,7 +47,7 @@ variable "schedule_task_expression" {
   default = "cron(30 9 * * ? *)" // run 9:30 everyday"
 }
 
-variable "cms_ars_repo_arn" {
+variable "repo_arn" {
   type        = string
   description = "Arn of the ecr repo hosting the scanner container image"
 }
