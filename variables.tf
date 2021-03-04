@@ -67,4 +67,4 @@ variable "scan_on_push" {
   type        = bool
   description = "Scan image on push to repo."
   default     = true
-}v
+}
