@@ -28,7 +28,7 @@ data "aws_iam_policy_document" "cloudwatch_logs_allow_kms" {
 
     principals {
       type        = "Service"
-      identifiers = ["logs.us-west-2.amazonaws.com"]
+      identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"]
     }
 
     actions = [
