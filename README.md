@@ -17,12 +17,12 @@ module "ecs_saf_runner" {
   environment = "prod"
 
   task_name                = "CIS-Moderate"
-  ecs_vpc_id               = module.vpc.vpc_id
-  ecs_subnet_ids           = module.vpc.private_subnets
-  repo_url                 = module.ecr.url
+  ecs_vpc_id               = aws_vpc.myvpc.id
+  ecs_subnet_ids           = [aws_subnet.mysubnet.id]
+  repo_url                 = aws_ecr_repository.ecrrepo.repository_url
   repo_tag                 = "latest"
   schedule_task_expression = "cron(30 9 * * ? *)"
-  repo_arn                 = module.ecr.arn
+  repo_arn                 = aws_ecr_repository.ecrrepo.arn
 }
 
 ```
